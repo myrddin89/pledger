@@ -28,6 +28,8 @@ setup(
     },
     install_requires=[
         'docopt',
-        'pyyaml'
+        'pyyaml',
+        'money-parser',
+        'pandas'
     ]
 )
