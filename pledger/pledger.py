@@ -17,6 +17,7 @@ Options:
     -s SEPARATOR        Separator for parsing the CSV file. [default: ,]
     -H                  Specifies if the CSV file has header line.
     --names NAMES       List of column names.
+    -L LENGTH           Number of tokens to consider for training.
 """
 
 import docopt
@@ -24,6 +25,7 @@ import docopt
 from . import csvimporter as cim
 from . import tokenizer as tkn
 import pandas as pd
+import numpy as np
 
 class Settings(object):
     def __init__(self, argv):
@@ -33,6 +35,7 @@ class Settings(object):
         self.sep = argv["-s"]
         self.header = 0 if argv["-H"] else None
         self.names = self.get_names(argv["--names"])
+        self.length = int(argv["-L"])
     
     def get_names(self, names):
         if names is None:
@@ -51,41 +54,21 @@ def main():
         print(e)
     else:
         stng = Settings(argv)
-        data = cim.read_csv(stng.input,
-                            sep=stng.sep,
-                            header=stng.header,
-                            names=stng.names,
-                            usecols=[2,3])
+        input_data = cim.read_csv(stng.input,
+                                  sep=stng.sep,
+                                  header=stng.header,
+                                  names=stng.names,
+                                  usecols=[2,3])
         
-        data[2] = data[2].str.upper().str.replace("[.,-/()*0-9]", "").str.split()
-        data[2] = data[2].apply(lambda x: list(set(x)))
+        input_data.columns = ["tokens", "accounts"]
+        input_data.tokens = input_data.tokens.str.upper().str.replace("[.,-/()*0-9]", "").str.split()
+        input_data.tokens = input_data.tokens.apply(lambda x: list(set(x)))
+        
+        tkn_data = input_data.tokens.apply(pd.Series).stack().reset_index(level=1, drop=True)
+        tkn_data.name = 'tokens'
+        data = input_data.drop('tokens', axis=1).join(tkn_data).reset_index(drop=True)
+        data = data.groupby(['tokens', 'accounts']).size()
+        data = data / data.sum()
         
         with open("test.dat", "w") as f:
-            f.write(data[2].to_csv())
-        
-        tokens = []
-                
-        for t in data[2]:
-            tokens += t
-        
-        tokens = pd.Series(sorted(tokens))
-        
-        accounts = []
-        
-        for a in data[3]:
-            accounts.append(a)
-        
-        accounts = pd.Series(sorted(accounts))
-        
-        print(tokens.value_counts(normalize=True))
-        print(accounts.value_counts(normalize=True))
-        
-        pairs = []
-        
-        for _, row in data.iterrows():
-            a = row[3]
-            pairs += [(tkn,a) for tkn in row[2]]
-        
-        pairs = pd.Series(pairs)
-        
-        print(pairs.value_counts(normalize=True))
+            f.write(data.to_csv())
